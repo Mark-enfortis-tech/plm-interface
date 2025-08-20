@@ -1,4 +1,5 @@
 #include "../include/PlmInterface.hpp"
+#include "../include/Message.hpp"
 #include <iostream>
 #include <string>
 #include <vector>

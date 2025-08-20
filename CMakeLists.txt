@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(PlmSimulator CXX)
+project(PlmInterfaceCpp CXX)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 11)
@@ -8,65 +8,66 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Add include directory
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-# Define source files
-set(SIMULATOR_SOURCES
-    src/main.cpp
+# Define common source files (shared by both executables)
+set(COMMON_SOURCES
     src/Message.cpp
+    src/PlmTxHandler.cpp
+    src/PlmRxHandler.cpp
     src/Serial.cpp
-    src/Simulator.cpp
 )
 
+# Create a static library for common code (optional but recommended)
+add_library(plm_common STATIC ${COMMON_SOURCES})
+
+# Define source files for executables (no PlmInterface.cpp needed)
 set(TEST_SENDER_SOURCES
     test/TestSender.cpp
-    src/Message.cpp
 )
 
 set(TEST_RECEIVER_SOURCES
     test/TestReceiver.cpp
-    src/Message.cpp
 )
 
 # Create executables
-add_executable(plm_simulator ${SIMULATOR_SOURCES})
 add_executable(test_sender ${TEST_SENDER_SOURCES})
 add_executable(test_receiver ${TEST_RECEIVER_SOURCES})
 
-# Link with required libraries
-target_link_libraries(plm_simulator pthread)
-target_link_libraries(test_sender pthread)
-target_link_libraries(test_receiver pthread)
+# Link executables with the common library and required system libraries
+target_link_libraries(test_sender plm_common pthread)
+target_link_libraries(test_receiver plm_common pthread)
+
+# Set output directories
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+
+# Add debug configuration
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall -Wextra -g")
+
+# Add release configuration with optimizations
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG")
 
 # Install targets
-install(TARGETS plm_simulator test_sender test_receiver
+install(TARGETS test_sender test_receiver plm_common
     RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
 )
 
 # Install scripts
 install(FILES 
     scripts/setup_virtual_ports.sh
-    scripts/run_test.sh
     PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
     DESTINATION bin
 )
 
 # Add custom target for running tests
 add_custom_target(run_test
-    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_test.sh
-    DEPENDS plm_simulator test_sender test_receiver
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_virtual_ports.sh
+    DEPENDS test_sender test_receiver
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    COMMENT "Running PLM simulator test"
+    COMMENT "Setting up virtual ports and running PLM test"
 )
-
-# Add debug configuration
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall -Wextra")
-
-# Add release configuration with optimizations
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
-
-# Output directories
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # Print configuration summary
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
