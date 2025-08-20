@@ -1,5 +1,4 @@
 #include "../include/PlmInterface.hpp"
-#include "../include/Message.hpp"  // Add this for Message class
 #include <iostream>
 #include <string>
 #include <vector>
@@ -12,40 +11,40 @@
 
 using MessageBuffer = std::vector<uint8_t>;
 
+
 class TestSender {
 public:
-    TestSender() : running(false), currentState(State::WAIT) {}
+    TestSender() {}
     
     ~TestSender() {}
+    
 
     PlmInterface plmInterface;
 
-    // Define the possible states
+     // Define the possible states
     enum class State {
         WAIT,
         SEND_DATA,
         WAIT_ACK
     };
 
-    State getCurrentState() const { return currentState; }
+    State getCurrentState() const { return currentState; };
 
     void setCurrentState(State newState) {
         currentState = newState;
-    }
+    };
 
-    // Fixed: Proper parameter type and payload handling
-    MessageBuffer createCurrentTxMessage(uint8_t payloadByte) {
-        // Create a simple payload with just one byte
-        std::vector<uint8_t> payload = {payloadByte};
+
+
+   MessageBuffer createCurrentTxMessage(const std::vector<uint8_t>& payload) {
         size_t payloadSize = payload.size();
-        
-        std::vector<uint8_t> buffer(17 + payloadSize); // Fixed size calculation
+        std::vector<uint8_t> buffer(19 + payloadSize); // Header + payload + checksum
 
         // Header
         buffer[0] = CMD_START_BYTE;
         
         // Length (excludes start byte, length field, and checksum)
-        uint16_t length_field = 15 + payloadSize;
+        uint16_t length_field = 15 + payloadSize; // 15 bytes for header fields excluding start byte and length
         buffer[1] = length_field & 0xFF;
         buffer[2] = (length_field >> 8) & 0xFF;
         
@@ -53,29 +52,30 @@ public:
         buffer[3] = MSG_TYPE_TRANSMIT_REQ;
         buffer[4] = OPCODE_TRANSMIT_REQ;
         
-        buffer[5] = 0x01;   // Data service type
+        buffer[5] = 0x01;   // Data service type, intranetwork, unicast
         buffer[6] = 0x00;   // Priority
-        buffer[7] = 0x00;   // Ack service
+        buffer[7] = 0x00;   // ack service
         buffer[8] = 0x01;   // Hops
-        buffer[9] = 0x01;   // Gain
+        buffer[9] = 0x01;   // gain
 
-        buffer[10] = 0x01;  // Tag (LSB)
-        buffer[11] = 0x00;  // Tag (MSB)
+        buffer[10] = 0x01;  // tag (LSB)
+        buffer[11] = 0x00;  // tag (MSB)
                 
-        buffer[12] = 0x00;  // Encrypt
-        buffer[13] = 0x00;  // Target port
+        buffer[12] = 0x00; // Encrypt
+        buffer[13] = 0x00; // Target port
 
-        buffer[14] = 0x01;  // Target ID LSB
-        buffer[15] = 0x00;  // Target ID MSB
+        buffer[14] = 0x01; // Target ID LSB
+        buffer[15] = 0x00; // Target ID MS
 
-        // Payload - copy the payload data
-        std::memcpy(&buffer[16], payload.data(), payloadSize);
+        // payload
+        buffer[16] = payload;
 
         // Checksum
         buffer[16 + payloadSize] = Message::calculateChecksum(buffer);
 
         return buffer;
     }
+
 
     std::string getStateName() const {
         switch (currentState) {
@@ -84,91 +84,119 @@ public:
             case State::WAIT_ACK: return "WAIT_ACK";
             default: return "UNKNOWN";
         }
-    }
+    };
 
-    // Fixed: Use correct PlmInterface method
-    bool sendMessage(const std::vector<uint8_t>& buffer) {
-        plmInterface.queueTxMessage(buffer);  // Fixed method name
-        return true;
+
+
+    bool sendMessage(const MessageBuffer& payload) {
+        plmInterface.queueTxMessage(payload);
     }
+    
    
     void stop() {
         running = false;
-        plmInterface.stop();  // Also stop the PLM interface
     }
 
     void run() {
-        // Start the PLM interface first
-        if (!plmInterface.start()) {
-            std::cerr << "Failed to start PLM interface\n";
-            return;
-        }
 
         running = true;
         std::cout << "Sender running, waiting for message, " << getStateName() << "...\n";
         uint8_t counter = 0;
         setCurrentState(State::WAIT);
 
+        
         while (running) {
-            switch(getCurrentState()) {
+            switch(getCurrentState()){
                 case State::WAIT: {
-                    std::cout << "State: " << getStateName() << "\n";
-                    currentTxMessage = createCurrentTxMessage(counter++);  // Fixed method name
-                    setCurrentState(State::SEND_DATA);  // Fixed state name
+                    std::cout << "State: "<< getStateName() <<"\n";
+                    currentTxMessage = getCurrentMessage(counter++);
+                    setCurrentState(State::SEND_TX);
                     sleep(1);
                 }
                 break;
 
                 case State::SEND_DATA: {
-                    std::cout << "State: " << getStateName() << "\n";
+                    std::cout << "State: "<< getStateName() <<"\n";
                     
                     // Send the message
                     sendMessage(currentTxMessage); 
 
                     Message::printHexDump("Sending transmit request", currentTxMessage);
                     std::cout << "Placed " << currentTxMessage.size() << " bytes into queue\n";
-                    setCurrentState(State::WAIT_ACK);  // Wait for ACK instead of going back to WAIT
+                    setCurrentState(State::WAIT);
                 }
                 break;
 
-                case State::WAIT_ACK: {
-                    std::cout << "State: " << getStateName() << "\n";
 
-                    // Fixed: Use correct PlmInterface methods
-                    if (plmInterface.hasReceivedRxMessage()) {
-                        currentRxMessage = plmInterface.getRxMessage();
+                case State::WAIT_ACK: {
+                    std::cout << "State: "<< getStateName() <<"\n";
+
+                    if (plmInterface.getRxQueueSize() > 0){
+                        currentRxMessage = plmInterface.getQueuedRxMessage();
                         std::cout << "Received ACK" << std::endl;
-                        Message::printHexDump("Received message", currentRxMessage);
+                        Message::printHexDump("Sending transmit request", currentRxMessage);
                         setCurrentState(State::WAIT);
-                        std::cout << "State: " << getStateName() << "\n";
-                    }
-                    
-                    // Add timeout logic to prevent infinite waiting
-                    static int ackWaitCounter = 0;
-                    if (++ackWaitCounter > 10000) {  // ~5 seconds timeout
-                        std::cout << "ACK timeout, returning to WAIT\n";
-                        setCurrentState(State::WAIT);
-                        ackWaitCounter = 0;
+                        std::cout << "State: "<< getStateName() <<"\n";
                     }
                 }
                 break;
             }
             
             // Small delay to prevent CPU hogging
-            usleep(500); // 0.5ms
+            usleep(500); // 10ms
+
         }
     }
     
 private:
+
     std::atomic<bool> running;
     State currentState;
     MessageBuffer currentTxMessage;
     MessageBuffer currentRxMessage;
 
-    // Your extractPayload method looks correct, keeping it as is
+
+    
     int extractPayload(const std::vector<uint8_t>& packet, std::vector<uint8_t>& payload) {
-        // ... (keeping your existing implementation)
+        if (packet.size() < 27) {  // Minimum packet size with empty payload
+            return -1;
+        }
+        
+        // Verify it's an intranetwork receive message
+        if (packet[0] != CMD_START_BYTE || 
+            packet[3] != MSG_TYPE_INTRANETWORK_RECEIVE || 
+            packet[4] != OPCODE_INTRANETWORK_RECEIVE) {
+            return -2;
+        }
+        
+        // Extract length field
+        uint16_t msg_len = packet[1] | (packet[2] << 8);
+        
+        // Verify message length
+        if (packet.size() < msg_len + 4) {  // +4 for start byte, length (2 bytes), and checksum
+            return -3;
+        }
+        
+        // Verify checksum
+        uint8_t expected_cs = packet[packet.size() - 1];
+        uint8_t calculated_cs = Message::calculateChecksum(packet);
+        if (expected_cs != calculated_cs) {
+            return -4;
+        }
+        
+        // Calculate payload length and extract payload
+        int payload_len = msg_len - 23;  // 23 bytes for header fields excluding start byte and length
+        if (payload_len <= 0) {
+            payload.clear();
+            return 0;  // No payload
+        }
+        
+        // Copy payload (starts at offset 26)
+        payload.assign(packet.begin() + 26, packet.begin() + 26 + payload_len);
+        
+        return payload_len;
     }
+    
 };
 
 // Global receiver instance for signal handler
@@ -182,7 +210,11 @@ void handleSignal(int sig) {
     }
 }
 
+
+
+
 int main(int argc, char *argv[]) {
+
     // Set up signal handlers for graceful shutdown
     std::signal(SIGINT, handleSignal);
     std::signal(SIGTERM, handleSignal);
@@ -190,11 +222,14 @@ int main(int argc, char *argv[]) {
     TestSender sender;
     g_sender = &sender;
 
-    std::cout << "Initial State: " << sender.getStateName() << "\n";
+    std::cout << "State: "<< sender.getStateName() <<"\n";
     
-    // Run the sender
+    // Run the sendeer
     sender.run();
     
     g_sender = nullptr;
+
     return 0;
 }
+
+
