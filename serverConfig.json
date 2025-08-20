@@ -1,0 +1,14 @@
+{
+    "svr1Addr": "192.168.1.91",
+    "svr1Port": 12345,
+    "svr1DataBytes": 80,
+    "svr2Addr": "192.168.1.92",
+    "svr2Port": 12345,
+    "svr2DataBytes": 52,
+    "svr3Addr": "192.168.1.93",
+    "svr3Port": 12345,
+    "svr3DataBytes": 52,
+    "svr4Addr": "192.168.1.94",
+    "svr4Port": 12345,
+    "svr4DataBytes": 52
+}

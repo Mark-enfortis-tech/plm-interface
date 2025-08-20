@@ -1,0 +1,14 @@
+{
+    "stationType": "NC",
+    "networkID": 1,
+    "nodeID": 0,
+    "devicePort": 0,
+    "operatingBand": 0,
+    "gain": 1,
+    "destinationPort": 0,
+    "destinationAddr": 1,
+    "serialPortTx": "/dev/ttyS0",
+    "serialPortRx": "/dev/ttyS1",
+    "serialBaud": 9600
+
+}
